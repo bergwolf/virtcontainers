@@ -51,13 +51,13 @@ func CreatePod(podConfig PodConfig) (*Pod, error) {
 	}
 
 	// Initialize the network.
-	err = p.network.init(&(p.config.NetworkConfig))
+	netNsPath, netNsCreated, err := p.network.init(p.config.NetworkConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	// Execute prestart hooks inside netns
-	err = p.network.run(p.config.NetworkConfig.NetNSPath, func() error {
+	err = p.network.run(netNsPath, func() error {
 		return p.config.Hooks.preStartHooks()
 	})
 	if err != nil {
@@ -65,7 +65,7 @@ func CreatePod(podConfig PodConfig) (*Pod, error) {
 	}
 
 	// Add the network
-	networkNS, err := p.network.add(*p, p.config.NetworkConfig)
+	networkNS, err := p.network.add(*p, p.config.NetworkConfig, netNsPath, netNsCreated)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func CreatePod(podConfig PodConfig) (*Pod, error) {
 	}
 
 	// Start the VM
-	err = p.startVM()
+	err = p.startVM(netNsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -122,9 +122,10 @@ func DeletePod(podID string) (*Pod, error) {
 	}
 
 	// Remove the network
-	err = p.network.remove(*p, networkNS)
-	if err != nil {
-		return nil, err
+	if networkNS.NetNsCreated {
+		if err := p.network.remove(*p, networkNS); err != nil {
+			return nil, err
+		}
 	}
 
 	// Delete it.
@@ -227,13 +228,13 @@ func RunPod(podConfig PodConfig) (*Pod, error) {
 	defer unlockPod(lockFile)
 
 	// Initialize the network.
-	err = p.network.init(&(p.config.NetworkConfig))
+	netNsPath, netNsCreated, err := p.network.init(p.config.NetworkConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	// Execute prestart hooks inside netns
-	err = p.network.run(p.config.NetworkConfig.NetNSPath, func() error {
+	err = p.network.run(netNsPath, func() error {
 		return p.config.Hooks.preStartHooks()
 	})
 	if err != nil {
@@ -241,7 +242,7 @@ func RunPod(podConfig PodConfig) (*Pod, error) {
 	}
 
 	// Add the network
-	networkNS, err := p.network.add(*p, p.config.NetworkConfig)
+	networkNS, err := p.network.add(*p, p.config.NetworkConfig, netNsPath, netNsCreated)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +254,7 @@ func RunPod(podConfig PodConfig) (*Pod, error) {
 	}
 
 	// Start the VM
-	err = p.startVM()
+	err = p.startVM(netNsPath)
 	if err != nil {
 		return nil, err
 	}
